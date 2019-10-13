@@ -32,7 +32,8 @@ class _BitcoinBlocks(iobase.BoundedSource):
             if not range_tracker.try_claim(i):
                 return
             self.blocks.inc()
-            yield i
+            yield "me"
+
 
     def split(self, desired_bundle_size, start_position=None, stop_position=None):
         if start_position is None:
@@ -63,6 +64,11 @@ class ReturnNumbers(beam.DoFn):
         print(element)
         return element
 if __name__ == "__main__":
-    with Pipeline(options=PipelineOptions()) as p:
+    options = PipelineOptions([
+        "--runner=PortableRunner",
+        "--job_endpoint=localhost:8099",
+        "--environment_type=LOOPBACK"
+    ])
+    with Pipeline(options) as p:
         numbers = p | 'GetBlocks' >> ReadBitcoinBlocks(100)
         numbers | "WriteToText" >> beam.io.textio.WriteToText("test.txt")

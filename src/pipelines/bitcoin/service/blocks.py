@@ -44,7 +44,13 @@ class BitcoinBatchRanges(beam.DoFn):
             yield (start_pos, start_pos + length % self._batchSize)
 
 
+class BitcoinBatchRead(beam.DoFn):
 
+    def __init__(self):
+        super(BitcoinBatchRead, self).__init__()
+
+    def process(self, range):
+        yield bitcoin.getBlk(range[0],range[1])
 
 # class ReadBitcoinBlocks(PTransform):
 #
@@ -58,7 +64,8 @@ class BitcoinBatchRanges(beam.DoFn):
 if __name__ == "__main__":
     with beam.Pipeline(options = PipelineOptions()) as p:
         number = (p | "random" >> beam.Create([1])
-        | "Ranges" >> beam.ParDo(BitcoinBatchRanges(0, 5670000, 1000))
-        | beam.Map(print))
+        | "Ranges" >> beam.ParDo(BitcoinBatchRanges(0, 10000, 1000))
+        | "Blocks" >> beam.ParDo(BitcoinBatchRead())
+        | "print" >> beam.Map(print))
         # numbers = (p | "Ranges" >> beam.ParDo(BitcoinBatchRanges(0, 10000, 1000)))
         # numbers | "WriteToText" >> beam.io.textio.WriteToText("test.txt")

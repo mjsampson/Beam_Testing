@@ -2,64 +2,63 @@ import logging
 import requests
 import urllib
 import os
-from apache_beam.io import iobase, OffsetRangeTracker
+from apache_beam.io import iobase, OrderedPositionRangeTracker
 from apache_beam.metrics import Metrics
 from apache_beam import Pipeline
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam import PTransform
 import apache_beam as beam
 from config.config import DefaultConfig
-
+import logging
 from py_bitcoin import BitcoinReader
-
+from past.builtins import long
+import threading
 bitcoin = BitcoinReader(rpcString=DefaultConfig.BITCOIN_RPCUSER + ":" + DefaultConfig.BITCOIN_RPCPASSWORD + '@' + DefaultConfig.BITCOIN_HOST)
 
-class _BitcoinBlocks(iobase.BoundedSource):
-    def __init__(self, count):
-        self.blocks = Metrics.counter(self.__class__, 'blocks')
-        self._count = count
-
-    def estimate_size(self):
-        return self._count
-
-    def get_range_tracker(self, start_postion, stop_position):
-        if start_postion is None:
-            start_postion = 0
-        if stop_position is None:
-            stop_position = self._count
-
-        return OffsetRangeTracker(start_postion, stop_position)
-
-    def read(self, range_tracker):
-        for i in range(range_tracker.start_position(),
-                       range_tracker.stop_position()):
-            if not range_tracker.try_claim(i):
-                return
-            self.blocks.inc()
-            yield bitcoin.getBlk(i)['result']
 
 
-    def split(self, desired_bundle_size, start_position=None, stop_position=None):
-        if start_position is None:
-            start_position = 0
-        if stop_position is None:
-            stop_position = 0
+class BitcoinBatchRanges(beam.DoFn):
+    def __init__(self, start, end, batchSize):
+        if start is None:
+            raise ValueError('Start offset must not be \'None\'')
+        if end is None:
+            raise ValueError('End offset must not be \'None\'')
+        if batchSize is None:
+            raise ValueError('Batch Size must not be \'None\'')
 
-        bundle_start = start_position
-        while bundle_start < stop_position:
-            bundle_stop = min(stop_position, bundle_start + desired_bundle_size)
-            yield iobase.SourceBundle(weight=(bundle_stop - desired_bundle_size),
-                                      source=self,
-                                      start_position=bundle_start,
-                                      stop_position=bundle_stop)
-            bundle_start = bundle_stop
+        assert start <= end
 
-class ReadBitcoinBlocks(PTransform):
+        self._start = start
+        self._end = end
+        self._batchSize = batchSize
 
-    def __init__(self, count):
-        super(ReadBitcoinBlocks, self).__init__()
-        self._count = count
+    def process(self, val):
+        length = self._end - self._start
+        tasks = int(length / self._batchSize)
 
-    def expand(self, pcoll):
-        return pcoll | iobase.Read(_BitcoinBlocks(self._count))
+        for i in range(tasks):
+            start_pos = self._start + i * self._batchSize
+            yield(start_pos, start_pos+self._batchSize)
+        if length % self._batchSize != 0:
+            start_pos = self._start + tasks * self._batchSize
+            yield (start_pos, start_pos + length % self._batchSize)
 
+
+
+
+# class ReadBitcoinBlocks(PTransform):
+#
+#     def __init__(self, count):
+#         super(ReadBitcoinBlocks, self).__init__()
+#         self._count = count
+#
+#     def expand(self, pcoll):
+#         return pcoll | iobase.Read(_BitcoinBlocks(self._count))
+
+if __name__ == "__main__":
+    with beam.Pipeline(options = PipelineOptions()) as p:
+        number = (p | "random" >> beam.Create([1])
+        | "Ranges" >> beam.ParDo(BitcoinBatchRanges(0, 5670000, 1000))
+        | beam.Map(print))
+        # numbers = (p | "Ranges" >> beam.ParDo(BitcoinBatchRanges(0, 10000, 1000)))
+        # numbers | "WriteToText" >> beam.io.textio.WriteToText("test.txt")

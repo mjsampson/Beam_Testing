@@ -8,7 +8,11 @@ from apache_beam import Pipeline
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam import PTransform
 import apache_beam as beam
+from config.config import DefaultConfig
 
+from py_bitcoin import BitcoinReader
+
+bitcoin = BitcoinReader(rpcString=DefaultConfig.BITCOIN_RPCUSER + ":" + DefaultConfig.BITCOIN_RPCPASSWORD + '@' + DefaultConfig.BITCOIN_HOST)
 
 class _BitcoinBlocks(iobase.BoundedSource):
     def __init__(self, count):
@@ -32,7 +36,7 @@ class _BitcoinBlocks(iobase.BoundedSource):
             if not range_tracker.try_claim(i):
                 return
             self.blocks.inc()
-            yield "me"
+            yield bitcoin.getBlk(i)['result']
 
 
     def split(self, desired_bundle_size, start_position=None, stop_position=None):
@@ -59,16 +63,3 @@ class ReadBitcoinBlocks(PTransform):
     def expand(self, pcoll):
         return pcoll | iobase.Read(_BitcoinBlocks(self._count))
 
-class ReturnNumbers(beam.DoFn):
-    def process(self, element):
-        print(element)
-        return element
-if __name__ == "__main__":
-    options = PipelineOptions([
-        "--runner=PortableRunner",
-        "--job_endpoint=localhost:8099",
-        "--environment_type=LOOPBACK"
-    ])
-    with Pipeline(options) as p:
-        numbers = p | 'GetBlocks' >> ReadBitcoinBlocks(100)
-        numbers | "WriteToText" >> beam.io.textio.WriteToText("test.txt")

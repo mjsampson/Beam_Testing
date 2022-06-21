@@ -12,7 +12,7 @@ hdfs==2.5.8
 httplib2==0.12.0
 idna==2.8
 mock==2.0.0
-numpy==1.17.2
+numpy==1.22.0
 oauth2client==3.0.0
 pbr==5.4.3
 pkg-resources==0.0.0
